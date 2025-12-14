@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>AI Study Buddy (Cloudflare)</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 0; background: #0b1220; color: #e6edf7; }
+    header { padding: 14px 18px; border-bottom: 1px solid rgba(255,255,255,.08); display:flex; gap:12px; align-items:center; }
+    header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+    .tag { font-size: 12px; opacity: .8; border: 1px solid rgba(255,255,255,.12); padding: 2px 8px; border-radius: 999px; }
+    main { display: grid; grid-template-columns: 1.2fr .8fr; gap: 14px; padding: 14px; height: calc(100vh - 58px); box-sizing: border-box; }
+    .card { background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); border-radius: 14px; overflow: hidden; display:flex; flex-direction:column; }
+    .card h2 { font-size: 13px; margin: 0; padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,.08); opacity: .9; }
+    #chat { padding: 12px; overflow:auto; flex: 1; }
+    .msg { margin: 10px 0; padding: 10px 12px; border-radius: 12px; max-width: 92%; line-height: 1.35; white-space: pre-wrap; }
+    .user { background: rgba(99, 179, 237, .18); border: 1px solid rgba(99, 179, 237, .22); margin-left:auto; }
+    .assistant { background: rgba(16, 185, 129, .14); border: 1px solid rgba(16, 185, 129, .18); }
+    .meta { font-size: 11px; opacity: .7; margin-bottom: 6px; }
+    .inputRow { display:flex; gap: 10px; padding: 12px; border-top: 1px solid rgba(255,255,255,.08); }
+    textarea { flex:1; resize:none; height: 52px; padding: 10px; border-radius: 12px; border: 1px solid rgba(255,255,255,.12); background: rgba(0,0,0,.18); color: #e6edf7; }
+    button { padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.06); color: #e6edf7; cursor:pointer; }
+    button:hover { background: rgba(255,255,255,.10); }
+    .right { padding: 12px; gap: 12px; }
+    label { font-size: 12px; opacity: .9; display:block; margin: 10px 0 6px; }
+    select, input[type="text"] { width: 100%; padding: 10px; border-radius: 12px; border: 1px solid rgba(255,255,255,.12); background: rgba(0,0,0,.18); color: #e6edf7; box-sizing:border-box; }
+    #notes { height: 180px; }
+    .row { display:flex; gap: 10px; }
+    .row > * { flex:1; }
+    small { opacity: .7; }
+    a { color: #93c5fd; text-decoration: none; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>AI Study Buddy</h1>
+  <span class="tag" id="sessionTag">Session: (not connected)</span>
+  <span class="tag"><a href="#" id="newSessionLink">New session</a></span>
+</header>
+
+<main>
+  <section class="card">
+    <h2>Chat</h2>
+    <div id="chat"></div>
+    <div class="inputRow">
+      <textarea id="input" placeholder="Ask a question or paste a problem..."></textarea>
+      <button id="sendBtn">Send</button>
+    </div>
+  </section>
+
+  <aside class="card right">
+    <h2>Memory / Settings</h2>
+
+    <label>Topic (optional)</label>
+    <input id="topic" type="text" placeholder="e.g., Linear Algebra: eigenvalues" />
+
+    <div class="row">
+      <div>
+        <label>Difficulty</label>
+        <select id="difficulty">
+          <option value="">(default)</option>
+          <option value="easy">easy</option>
+          <option value="medium">medium</option>
+          <option value="hard">hard</option>
+        </select>
+      </div>
+      <div>
+        <label>Format</label>
+        <select id="format">
+          <option value="">(default)</option>
+          <option value="short">short</option>
+          <option value="detailed">detailed</option>
+        </select>
+      </div>
+    </div>
+
+    <label>Notes (stored as memory for this session)</label>
+    <textarea id="notes" placeholder="Paste notes/context here..."></textarea>
+    <div class="row">
+      <button id="saveNotesBtn">Save notes</button>
+      <button id="quizBtn">Make quiz</button>
+    </div>
+
+    <div style="margin-top:10px">
+      <small>
+        Backend: Cloudflare Worker + Durable Objects + Workers AI. <br/>
+        Tip: Use <code>/session/new</code> to create fresh sessions.
+      </small>
+    </div>
+  </aside>
+</main>
+
+<script type="module">
+  const chatEl = document.getElementById("chat");
+  const sessionTag = document.getElementById("sessionTag");
+  const inputEl = document.getElementById("input");
+  const sendBtn = document.getElementById("sendBtn");
+  const newSessionLink = document.getElementById("newSessionLink");
+
+  const topicEl = document.getElementById("topic");
+  const difficultyEl = document.getElementById("difficulty");
+  const formatEl = document.getElementById("format");
+  const notesEl = document.getElementById("notes");
+  const saveNotesBtn = document.getElementById("saveNotesBtn");
+  const quizBtn = document.getElementById("quizBtn");
+
+  // Configure this to your deployed worker origin if needed.
+  // In dev, set WORKER_ORIGIN to the wrangler dev URL (printed in terminal).
+  const WORKER_ORIGIN = window.WORKER_ORIGIN || "";
+
+  let ws = null;
+  let sessionId = null;
+
+  function addMsg(role, content) {
+    const wrap = document.createElement("div");
+    wrap.className = "msg " + role;
+
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    meta.textContent = role === "user" ? "You" : "Assistant";
+    wrap.appendChild(meta);
+
+    const body = document.createElement("div");
+    body.textContent = content;
+    wrap.appendChild(body);
+
+    chatEl.appendChild(wrap);
+    chatEl.scrollTop = chatEl.scrollHeight;
+  }
+
+  async function newSession() {
+    const r = await fetch(WORKER_ORIGIN + "/session/new", { method: "GET" });
+    const j = await r.json();
+    sessionId = j.sessionId;
+    sessionTag.textContent = "Session: " + sessionId;
+    connectWS();
+  }
+
+  function connectWS() {
+    if (ws) try { ws.close(); } catch {}
+
+    const wsUrl = (WORKER_ORIGIN ? WORKER_ORIGIN.replace("http", "ws") : (location.protocol === "https:" ? "wss://" : "ws://") + location.host) +
+      "/session/" + sessionId + "/ws";
+
+    ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => {
+      addMsg("assistant", "Connected. Ask me anything, or paste notes on the right and click 'Save notes'.");
+    };
+
+    ws.onmessage = (evt) => {
+      const data = JSON.parse(evt.data);
+      if (data.type === "hello") {
+        // ignore
+      } else if (data.type === "state") {
+        // hydrate chat history
+        chatEl.innerHTML = "";
+        for (const m of data.messages || []) addMsg(m.role, m.content);
+      } else if (data.type === "message") {
+        addMsg(data.message.role, data.message.content);
+      } else if (data.type === "error") {
+        addMsg("assistant", "Error: " + data.message);
+      }
+    };
+
+    ws.onclose = () => {
+      addMsg("assistant", "Disconnected.");
+    };
+  }
+
+  function sendCommand(cmd) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      addMsg("assistant", "Not connected yet. Creating a new session...");
+      return newSession();
+    }
+    ws.send(JSON.stringify(cmd));
+  }
+
+  sendBtn.onclick = () => {
+    const content = inputEl.value.trim();
+    if (!content) return;
+    inputEl.value = "";
+    addMsg("user", content);
+    sendCommand({ type: "message", content });
+  };
+
+  inputEl.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") sendBtn.click();
+  });
+
+  newSessionLink.onclick = (e) => {
+    e.preventDefault();
+    newSession();
+  };
+
+  saveNotesBtn.onclick = () => {
+    const notes = notesEl.value.trim();
+    sendCommand({ type: "save_notes", notes });
+    const topic = topicEl.value.trim();
+    const difficulty = difficultyEl.value;
+    const format = formatEl.value;
+    sendCommand({ type: "set_profile", profile: { topic: topic || undefined, difficulty: difficulty || undefined, format: format || undefined }});
+    addMsg("assistant", "Saved notes and preferences for this session.");
+  };
+
+  quizBtn.onclick = () => {
+    sendCommand({ type: "quiz", count: 5 });
+  };
+
+  // start
+  newSession();
+</script>
+</body>
+</html>

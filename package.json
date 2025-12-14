@@ -1,0 +1,14 @@
+{
+  "name": "AI Study Buddy",
+  "version": "1.0.0",
+  "description": "",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20251213.0",
+    "typescript": "^5.5.3"
+  },
+  "private": true
+}
