@@ -1,25 +1,34 @@
-A small AI-powered chat app designed to satisfy Cloudflare’s AI app assignment requirements:
-- **LLM**: Workers AI (recommended model: Llama 3.3)
-- **Workflow/Coordination**: Durable Objects coordinate sessions and WebSocket fan-out
-- **User input**: Web chat UI served via Pages
-- **Memory/State**: session messages + notes + preferences persisted in Durable Object storage
+# cf_ai_OUStudyBuddy
+An AI-powered study assistant built on Cloudflare. It provides a real-time chat UI where users can paste notes, ask questions, and generate quizzes. The app uses Workers AI (Llama 3.3), Durable Objects for session coordination and memory/state, and a Pages frontend.
 
-## Architecture
-- **Cloudflare Pages**: static web UI (`/pages/index.html`)
-- **Cloudflare Worker**: routes session requests and creates new sessions (`/src/worker.ts`)
-- **Durable Object**: `ChatSessionDO` stores memory/state and runs the AI calls (`/src/durable-objects/ChatSessionDO.ts`)
-- **Workers AI**: invoked from the Durable Object via `env.AI.run(...)`
+## Requirements Checklist (per assignment)
+- LLM: Cloudflare Workers AI (Llama 3.3)
+- Workflow/coordination: Durable Objects (per-session chat + WebSocket coordination)
+- User input: Chat UI (Cloudflare Pages)
+- Memory/state: Durable Object storage (chat history + notes + preferences)
 
-## Features
-- Real-time chat via WebSockets (DO acts as the session hub)
-- Session memory (last ~40 messages stored + rolling summary cadence)
-- Notes panel (stored server-side as memory context per session)
-- Quiz generation based on your notes and recent conversation
+## Tech Stack
+- Cloudflare Workers (TypeScript)
+- Durable Objects (TypeScript)
+- Cloudflare Workers AI (Llama 3.3)
+- Cloudflare Pages (HTML + JavaScript)
 
-## Prerequisites
-- Node.js 18+
-- Cloudflare account
-- Wrangler installed (included as a dev dependency)
+## Project Structure
+- `src/` - Worker backend + Durable Object
+- `pages/` - Pages frontend (chat UI)
+- `wrangler.toml` - Cloudflare configuration
+- `PROMPTS.md` - AI prompts used during development
+
+## Local Development
+
+### Prereqs
+- Node.js 18+ (recommended)
+- Cloudflare Wrangler CLI
+
+Install Wrangler (if you don’t have it):
+```bash
+npm i -g wrangler
+```
 
 ## Setup
 ```bash
